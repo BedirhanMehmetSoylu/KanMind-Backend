@@ -1,6 +1,7 @@
 from rest_framework import serializers
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 User = get_user_model()
 
@@ -47,3 +48,25 @@ class RegistrationSerializer(serializers.Serializer):
             "fullname": f"{instance.first_name} {instance.last_name}"
         }
 
+class CustomTokenObtainPairSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+    token = serializers.CharField(read_only=True)
+    user_id = serializers.IntegerField(read_only=True)
+    fullname = serializers.CharField(read_only=True)
+
+    def validate(self, attrs):
+        email = attrs.get("email")
+        password = attrs.get("password")
+
+        user = authenticate(username=email, password=password)
+        if not user:
+            raise serializers.ValidationError("No active account found with the given credentials")
+
+        refresh = RefreshToken.for_user(user)
+        return {
+            "token": str(refresh.access_token),
+            "user_id": user.id,
+            "email": user.email,
+            "fullname": f"{user.first_name} {user.last_name}"
+        }
