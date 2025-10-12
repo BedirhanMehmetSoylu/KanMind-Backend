@@ -23,5 +23,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/', include('auth_app.api.urls')),
-    path('api/', include('kanban_app.api.urls')),
+    path('api/', include('boards_app.api.urls')),
 ]
