@@ -15,7 +15,11 @@ class BoardSerializer(serializers.ModelSerializer):
     created_by = UserMiniSerializer(read_only=True)
     members = UserMiniSerializer(many=True, read_only=True)
     title = serializers.CharField(source='name', read_only=True)
+    member_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Board
-        fields = ['id', 'name', 'title', 'created_by', 'members']
+        fields = ['id', 'name', 'title', 'created_by', 'members', 'member_count']
+
+    def get_member_count(self, obj):
+        return obj.members.count()

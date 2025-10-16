@@ -32,6 +32,49 @@ class BoardListView(APIView):
         serializer = BoardSerializer(board)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
+class BoardDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            board = Board.objects.get(pk=pk, created_by=request.user)
+        except Board.DoesNotExist:
+            return Response({"detail": "Board not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = BoardSerializer(board)
+        return Response(serializer.data)
+
+    def patch(self, request, pk):
+        try:
+            board = Board.objects.get(pk=pk, created_by=request.user)
+        except Board.DoesNotExist:
+            return Response({"detail": "Board not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        new_title = request.data.get("title") or request.data.get("name")
+        if new_title:
+            board.name = new_title
+
+        member_ids = request.data.get("members", None)
+        if member_ids is not None:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            valid_members = User.objects.filter(id__in=member_ids)
+            board.members.set(valid_members)
+
+        board.save()
+        serializer = BoardSerializer(board)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def delete(self, request, pk):
+        try:
+            board = Board.objects.get(pk=pk, created_by=request.user)
+        except Board.DoesNotExist:
+            return Response({"detail": "Board not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        board.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    
 class AssignedTasksView(APIView):
     permission_classes = [IsAuthenticated]
 
