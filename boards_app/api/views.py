@@ -4,6 +4,8 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
 from .models import Board
+from task_app.api.models import Task
+from task_app.api.serializers import TaskSerializer
 from .serializers import BoardSerializer
 
 User = get_user_model()
@@ -41,8 +43,13 @@ class BoardDetailView(APIView):
         except Board.DoesNotExist:
             return Response({"detail": "Board not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = BoardSerializer(board)
-        return Response(serializer.data)
+        board_serializer = BoardSerializer(board)
+        tasks = Task.objects.filter(board=board)
+        task_serializer = TaskSerializer(tasks, many=True)
+        
+        data = board_serializer.data
+        data['tasks'] = task_serializer.data
+        return Response(data, status=status.HTTP_200_OK)
 
     def patch(self, request, pk):
         try:
@@ -54,17 +61,15 @@ class BoardDetailView(APIView):
         if new_title:
             board.name = new_title
 
-        member_ids = request.data.get("members", None)
+        member_ids = request.data.get("members")
         if member_ids is not None:
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
             valid_members = User.objects.filter(id__in=member_ids)
             board.members.set(valid_members)
 
         board.save()
         serializer = BoardSerializer(board)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
     def delete(self, request, pk):
         try:
             board = Board.objects.get(pk=pk, created_by=request.user)
@@ -73,7 +78,6 @@ class BoardDetailView(APIView):
 
         board.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-
     
 class AssignedTasksView(APIView):
     permission_classes = [IsAuthenticated]
