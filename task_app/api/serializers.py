@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Task
 from django.contrib.auth import get_user_model
 from boards_app.api.models import Board
+from .models import Comment
 
 User = get_user_model()
 
@@ -53,3 +54,16 @@ class TaskSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+class CommentSerializer(serializers.ModelSerializer):
+    author = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'task', 'author', 'content', 'created_at']
+        read_only_fields = ['task', 'author', 'created_at']
+
+    def get_author(self, obj):
+        if obj.author:
+            return f"{obj.author.first_name} {obj.author.last_name}".strip() or obj.author.email
+        return "Unbekannt"
