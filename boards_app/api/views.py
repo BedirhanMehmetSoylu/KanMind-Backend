@@ -13,6 +13,8 @@ User = get_user_model()
 
 class BoardListView(APIView):
     permission_classes = [IsAuthenticated]
+    queryset = Board.objects.all()
+    serializer_class = BoardSerializer
 
     def get(self, request):
         boards = Board.objects.filter(created_by=request.user)
@@ -78,11 +80,3 @@ class BoardDetailView(APIView):
 
         board.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
-class AssignedTasksView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        # TODO: später durch echte Tasks ersetzen
-        tasks = []
-        return Response(tasks)
