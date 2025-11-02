@@ -37,6 +37,8 @@ class TaskSerializer(serializers.ModelSerializer):
         allow_null=True
     )
 
+    comments_count = serializers.SerializerMethodField()
+
     class Meta:
         model = Task
         fields = [
@@ -53,7 +55,11 @@ class TaskSerializer(serializers.ModelSerializer):
             'due_date',
             'created_at',
             'updated_at',
+            'comments_count',
         ]
+
+    def get_comments_count(self, obj):
+        return getattr(obj, 'comments', []).count() if hasattr(obj, 'comments') else 0
 
 class CommentSerializer(serializers.ModelSerializer):
     author = serializers.SerializerMethodField()
