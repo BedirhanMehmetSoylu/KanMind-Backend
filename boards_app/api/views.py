@@ -7,17 +7,24 @@ from .models import Board
 from task_app.api.models import Task
 from task_app.api.serializers import TaskSerializer
 from .serializers import BoardSerializer
+from django.db.models import Q
 
 User = get_user_model()
 
 
 class BoardListView(APIView):
     permission_classes = [IsAuthenticated]
-    queryset = Board.objects.all()
-    serializer_class = BoardSerializer
 
     def get(self, request):
-        boards = Board.objects.filter(created_by=request.user)
+        user = request.user
+
+        boards = Board.objects.filter(
+            Q(created_by=user) |
+            Q(members=user) |
+            Q(tasks__assigned_to=user) |
+            Q(tasks__reviewer=user)
+        ).distinct()
+
         serializer = BoardSerializer(boards, many=True)
         return Response(serializer.data)
 
@@ -40,10 +47,17 @@ class BoardDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
+        user = request.user
         try:
-            board = Board.objects.get(pk=pk, created_by=request.user)
+            board = Board.objects.filter(
+                Q(id=pk),
+                Q(created_by=user) |
+                Q(members=user) |
+                Q(tasks__assigned_to=user) |
+                Q(tasks__reviewer=user)
+            ).distinct().get()
         except Board.DoesNotExist:
-            return Response({"detail": "Board not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Board not found or no access"}, status=status.HTTP_404_NOT_FOUND)
 
         board_serializer = BoardSerializer(board)
         tasks = Task.objects.filter(board=board)
