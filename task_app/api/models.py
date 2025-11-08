@@ -1,10 +1,13 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+
 from boards_app.api.models import Board
 
 User = get_user_model()
 
 class Task(models.Model):
+    """Represents a task in a board, with assignment, status, priority, and deadlines."""
+
     STATUS_CHOICES = [
         ('to-do', 'To Do'),
         ('in-progress', 'In Progress'),
@@ -24,6 +27,7 @@ class Task(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
+        """Return the title of the task as its string representation."""
         return self.title
     
 class Comment(models.Model):
@@ -33,4 +37,5 @@ class Comment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
+        """Return a short representation of the comment (author and first 30 chars)."""
         return f"{self.author} - {self.content[:30]}"

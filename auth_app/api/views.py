@@ -1,17 +1,25 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .serializers import RegistrationSerializer
 from rest_framework.permissions import AllowAny
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate, get_user_model
 
+from .serializers import RegistrationSerializer
+
 User = get_user_model()
 
 class RegistrationView(APIView):
+    """
+    API endpoint for user registration.
+
+    Creates a new user account and returns an authentication token.
+    Accessible without authentication.
+    """
     permission_classes = [AllowAny]
 
     def post(self, request):
+        """Register a new user."""
         serializer = RegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
@@ -22,9 +30,15 @@ class RegistrationView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CustomLoginView(APIView):
+    """
+    API endpoint for user login.
+
+    Authenticates user credentials and returns an authentication token.
+    """
     permission_classes = [AllowAny]
 
     def post(self, request):
+        """Authenticate a user by email and password."""
         email = request.data.get("email")
         password = request.data.get("password")
 
@@ -35,7 +49,7 @@ class CustomLoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        token, created = Token.objects.get_or_create(user=user)
+        token, _ = Token.objects.get_or_create(user=user)
         return Response({
             "token": token.key,
             "user_id": user.id,
@@ -44,9 +58,15 @@ class CustomLoginView(APIView):
         })
     
 class EmailCheckView(APIView):
+    """
+    API endpoint for verifying if an email exists in the system.
+
+    Used for frontend validation when adding collaborators or new users.
+    """
     permission_classes = [AllowAny]
 
     def get(self, request):
+        """Check if a user with the given email exists."""
         email = request.query_params.get('email')
         if not email:
             return Response(
