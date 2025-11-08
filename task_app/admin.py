@@ -45,7 +45,7 @@ class TaskAdmin(admin.ModelAdmin):
 class CommentAdmin(admin.ModelAdmin):
     """Admin view for Comment model with custom display columns."""
     list_display = ('id', 'task', 'author_display', 'short_text', 'created_at')
-    search_fields = ('text', 'task__title', 'author__first_name', 'author__last_name')
+    search_fields = ('content', 'task__title', 'author__first_name', 'author__last_name')
     list_filter = ('created_at',)
     ordering = ('-created_at',)
 
@@ -58,5 +58,5 @@ class CommentAdmin(admin.ModelAdmin):
 
     def short_text(self, obj):
         """Return a truncated version of the comment text (max 60 chars)."""
-        return (obj.text[:60] + '...') if len(obj.text) > 60 else obj.text
+        return (obj.content[:60] + '...') if len(obj.content) > 60 else obj.content
     short_text.short_description = "Comment"
