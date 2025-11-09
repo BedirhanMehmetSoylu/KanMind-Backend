@@ -15,7 +15,7 @@ class UserMiniSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'fullname']
+        fields = ['id', 'email', 'fullname']
 
     def get_fullname(self, obj):
         """Return the user's full name, or just first_name if last_name is missing."""
@@ -51,24 +51,46 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             'id',
+            'board',
             'title',
             'description',
-            'board',
+            'status',
+            'priority',
             'assignee',
             'assignee_id',
             'reviewer',
             'reviewer_id',
-            'status',
-            'priority',
             'due_date',
-            'created_at',
-            'updated_at',
             'comments_count',
         ]
 
     def get_comments_count(self, obj):
         """Return number of comments on this task."""
         return getattr(obj, 'comments', []).count() if hasattr(obj, 'comments') else 0
+    
+class TaskUpdateSerializer(serializers.ModelSerializer):
+    """Serializer für PATCH-Updates, ohne board und comments_count."""
+    assignee_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source='assigned_to',
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
+    reviewer_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source='reviewer',
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
+    assignee = UserMiniSerializer(source='assigned_to', read_only=True)
+    reviewer = UserMiniSerializer(read_only=True)
+
+    class Meta:
+        model = Task
+        fields = ['id', 'title', 'description', 'status', 'priority', 
+                  'assignee', 'reviewer', 'assignee_id', 'reviewer_id', 'due_date']
 
 class CommentSerializer(serializers.ModelSerializer):
     """
@@ -79,7 +101,7 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ['id', 'task', 'author', 'content', 'created_at']
+        fields = ['id', 'created_at', 'author', 'content']
         read_only_fields = ['task', 'author', 'created_at']
 
     def get_author(self, obj):

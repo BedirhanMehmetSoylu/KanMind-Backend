@@ -6,9 +6,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 
 from .models import Board
-from .serializers import BoardSerializer
-from task_app.api.models import Task
-from task_app.api.serializers import TaskSerializer
+from .serializers import BoardListSerializer, BoardDetailSerializer, BoardUpdateSerializer
 
 User = get_user_model()
 
@@ -38,7 +36,7 @@ class BoardListView(APIView):
             Q(tasks__reviewer=user)
         ).distinct()
 
-        serializer = BoardSerializer(boards, many=True)
+        serializer = BoardListSerializer(boards, many=True)
         return Response(serializer.data)
 
     def post(self, request):
@@ -57,7 +55,7 @@ class BoardListView(APIView):
         valid_members = User.objects.filter(id__in=member_ids)
         board.members.add(*valid_members)
 
-        serializer = BoardSerializer(board)
+        serializer = BoardListSerializer(board)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
 class BoardDetailView(APIView):
@@ -83,11 +81,13 @@ class BoardDetailView(APIView):
         """Return details of a specific board and its tasks."""
         board = self.get_board(pk, request.user)
         if not board:
-            return Response({"detail": "Board not found or no access"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Board not found or no access"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-        data = BoardSerializer(board).data
-        data['tasks'] = TaskSerializer(Task.objects.filter(board=board), many=True).data
-        return Response(data, status=status.HTTP_200_OK)
+        serializer = BoardDetailSerializer(board)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, pk):
         """Update a board's title or members (only allowed for creator)."""
@@ -97,7 +97,8 @@ class BoardDetailView(APIView):
             return Response({"detail": "Board not found"}, status=status.HTTP_404_NOT_FOUND)
 
         self._update_board(board, request.data)
-        serializer = BoardSerializer(board)
+
+        serializer = BoardUpdateSerializer(board)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def _update_board(self, board, data):
@@ -118,7 +119,10 @@ class BoardDetailView(APIView):
         try:
             board = Board.objects.get(pk=pk, created_by=request.user)
         except Board.DoesNotExist:
-            return Response({"detail": "Board not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Board not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         board.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

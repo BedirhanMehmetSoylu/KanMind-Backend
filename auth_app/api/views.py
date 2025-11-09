@@ -38,24 +38,20 @@ class CustomLoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        """Authenticate a user by email and password."""
-        email = request.data.get("email")
-        password = request.data.get("password")
+        """Login with email and password, return token and user info."""
+        email, password = request.data.get("email"), request.data.get("password")
+        if not email or not password:
+            return Response({"detail": "Email and password are required."}, status=400)
 
         user = authenticate(username=email, password=password)
         if not user:
-            return Response(
-                {"detail": "Invalid credentials"},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+            return Response({"detail": "Invalid credentials."}, status=400)
 
         token, _ = Token.objects.get_or_create(user=user)
         return Response({
-            "token": token.key,
-            "user_id": user.id,
-            "email": user.email,
-            "fullname": f"{user.first_name} {user.last_name}"
-        })
+            "token": token.key, "user_id": user.id,
+            "email": user.email, "fullname": f"{user.first_name} {user.last_name}"
+        }, status=200)
     
 class EmailCheckView(APIView):
     """

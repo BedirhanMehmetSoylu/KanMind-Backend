@@ -8,7 +8,7 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework import generics, status, permissions
 
 from .models import Task, Comment
-from .serializers import TaskSerializer, CommentSerializer
+from .serializers import TaskSerializer, CommentSerializer, TaskUpdateSerializer
 from boards_app.api.models import Board
 
 class AssignedTasksView(APIView):
@@ -50,6 +50,7 @@ class ReviewingTasksView(APIView):
         two_weeks_ago = timezone.now() - timedelta(days=14)
         return tasks.filter(status='done', updated_at__gte=two_weeks_ago).count()
     
+    
 class BoardTaskListView(APIView):
     """Lists all tasks for a specific board."""
     permission_classes = [IsAuthenticated]
@@ -69,27 +70,26 @@ class BoardTaskListView(APIView):
         serializer = TaskSerializer(tasks, many=True)
         return Response(serializer.data)
     
+    
 class TaskCreateView(APIView):
     """Handles creation of new tasks."""
     
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        """
-        Create a new task with the provided data.
-
-        Returns 201 with task data if successful,
-        or 400 with validation errors.
-        """
+        """Validate data, check board membership, and create a task. Returns 201, 400, 403, or 404."""
         data = request.data.copy()
-
+        try:
+            board = Board.objects.get(id=data.get("board"))
+        except Board.DoesNotExist:
+            return Response({"detail": "Board not found. The Board with this id doesnt exist."}, status=404)
+        if request.user != board.created_by and request.user not in board.members.all():
+            return Response({"detail": "Not allowed. The User needs to be Member of the Board to create a Task."}, status=403)
         serializer = TaskSerializer(data=data)
         if serializer.is_valid():
-            task = serializer.save()
-            response_serializer = TaskSerializer(task)
-            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(TaskSerializer(serializer.save()).data, status=201)
+        return Response(serializer.errors, status=400)
+    
     
 class TaskDetailView(APIView):
     """Retrieve, update, or delete a specific task."""
@@ -107,43 +107,67 @@ class TaskDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, pk):
-        """Partially update a task's fields by its ID."""
+        """Update a task; only board members allowed. Board & comments_count not shown."""
         try:
             task = Task.objects.get(pk=pk)
         except Task.DoesNotExist:
-            return Response({"detail": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Task not found. This Task-ID doesnt exist."}, status=404)
+        
+        board = task.board
+        if request.user != board.created_by and request.user not in board.members.all():
+            return Response({"detail": "Not allowed. Must be a board member."}, status=403)
 
-        serializer = TaskSerializer(task, data=request.data, partial=True)
+        serializer = TaskUpdateSerializer(task, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(serializer.data, status=200)
+        return Response(serializer.errors, status=400)
 
     def delete(self, request, pk):
         """Delete a specific task by its ID."""
         try:
             task = Task.objects.get(pk=pk)
         except Task.DoesNotExist:
-            return Response({"detail": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Task not found. This Task-ID doesnt exist."}, status=status.HTTP_404_NOT_FOUND)
 
         task.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
 
-class CommentListCreateView(generics.ListCreateAPIView):
-    """List or create comments for a specific task."""
+class CommentListCreateView(APIView):
+    """List or create comments for a specific task with proper status codes."""
+    permission_classes = [IsAuthenticated]
 
-    serializer_class = CommentSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    def get(self, request, task_id):
+        """Return all comments for a task. 403 if not board member, 404 if task missing."""
+        try:
+            task = Task.objects.get(pk=task_id)
+        except Task.DoesNotExist:
+            return Response({"detail": "Task not found. This Task-ID doesnt exist."}, status=404)
 
-    def get_queryset(self):
-        """Return all comments for the given task ID."""
-        task_id = self.kwargs.get('task_id')
-        return Comment.objects.filter(task_id=task_id)
+        if request.user != task.board.created_by and request.user not in task.board.members.all():
+            return Response({"detail": "Not allowed. Must be a board member."}, status=403)
 
-    def perform_create(self, serializer):
-        """Automatically assign the logged-in user and task to a new comment."""
-        task_id = self.kwargs.get('task_id')
-        serializer.save(task_id=task_id, author=self.request.user)
+        comments = task.comments.order_by('created_at')
+        serializer = CommentSerializer(comments, many=True)
+        return Response(serializer.data, status=200)
+
+    def post(self, request, task_id):
+        """Create a comment for a task. 201 on success, 400 on invalid data, 403/404 as above."""
+        try:
+            task = Task.objects.get(pk=task_id)
+        except Task.DoesNotExist:
+            return Response({"detail": "Task not found. This Task-ID doesnt exist."}, status=404)
+
+        if request.user != task.board.created_by and request.user not in task.board.members.all():
+            return Response({"detail": "Not allowed. Must be a board member."}, status=403)
+
+        serializer = CommentSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(task=task, author=request.user)
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+    
 
 class CommentDeleteView(APIView):
     """Delete a comment if the logged-in user is the author."""
@@ -155,13 +179,14 @@ class CommentDeleteView(APIView):
         try:
             comment = Comment.objects.get(pk=pk, task_id=task_id)
         except Comment.DoesNotExist:
-            return Response({"detail": "Comment not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Comment or Task not found"}, status=status.HTTP_404_NOT_FOUND)
         
         if comment.author != request.user:
             return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
         
         comment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
 
 class DashboardView(APIView):
     """Provides dashboard statistics for the logged-in user."""
