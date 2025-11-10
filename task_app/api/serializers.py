@@ -46,6 +46,7 @@ class TaskSerializer(serializers.ModelSerializer):
     )
 
     comments_count = serializers.SerializerMethodField()
+    created_by = serializers.HiddenField(default=serializers.CurrentUserDefault())
 
     class Meta:
         model = Task
@@ -62,6 +63,7 @@ class TaskSerializer(serializers.ModelSerializer):
             'reviewer_id',
             'due_date',
             'comments_count',
+            'created_by'
         ]
 
     def get_comments_count(self, obj):

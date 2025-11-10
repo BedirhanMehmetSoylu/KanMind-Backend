@@ -73,21 +73,21 @@ class BoardTaskListView(APIView):
     
 class TaskCreateView(APIView):
     """Handles creation of new tasks."""
-    
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        """Validate data, check board membership, and create a task. Returns 201, 400, 403, or 404."""
+        """Validate data, check board membership, and create a task."""
         data = request.data.copy()
         try:
             board = Board.objects.get(id=data.get("board"))
         except Board.DoesNotExist:
-            return Response({"detail": "Board not found. The Board with this id doesnt exist."}, status=404)
+            return Response({"detail": "Board not found."}, status=404)
         if request.user != board.created_by and request.user not in board.members.all():
-            return Response({"detail": "Not allowed. The User needs to be Member of the Board to create a Task."}, status=403)
-        serializer = TaskSerializer(data=data)
+            return Response({"detail": "Not allowed. Must be a board member."}, status=403)
+        serializer = TaskSerializer(data=data, context={'request': request})
         if serializer.is_valid():
-            return Response(TaskSerializer(serializer.save()).data, status=201)
+            task = serializer.save()
+            return Response(TaskSerializer(task).data, status=201)
         return Response(serializer.errors, status=400)
     
     
@@ -124,14 +124,18 @@ class TaskDetailView(APIView):
         return Response(serializer.errors, status=400)
 
     def delete(self, request, pk):
-        """Delete a specific task by its ID."""
-        try:
-            task = Task.objects.get(pk=pk)
+        """Delete a task (creator or board owner only)."""
+        try: task = Task.objects.get(pk=pk)
         except Task.DoesNotExist:
-            return Response({"detail": "Task not found. This Task-ID doesnt exist."}, status=status.HTTP_404_NOT_FOUND)
-
-        task.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+            return Response({"detail": "Task not found."}, status=404)
+        board = task.board
+        if request.user != task.created_by and request.user != board.created_by:
+            return Response({"detail": "Forbidden. Only creator or board owner can delete."}, status=403)
+        try:
+            task.delete()
+            return Response(status=204)
+        except Exception:
+            return Response({"detail": "Invalid data or server error."}, status=400)
     
 
 class CommentListCreateView(APIView):

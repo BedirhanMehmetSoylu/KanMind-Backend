@@ -7,6 +7,7 @@ from django.db.models import Q
 
 from .models import Board
 from .serializers import BoardListSerializer, BoardDetailSerializer, BoardUpdateSerializer
+from task_app.api.serializers import Task
 
 User = get_user_model()
 
@@ -67,62 +68,47 @@ class BoardDetailView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def get_board(self, pk, user):
-        """Helper to safely fetch board with access check."""
-        return Board.objects.filter(
-            Q(id=pk),
-            Q(created_by=user) |
-            Q(members=user) |
-            Q(tasks__assigned_to=user) |
-            Q(tasks__reviewer=user)
-        ).distinct().first()
-
     def get(self, request, pk):
-        """Return details of a specific board and its tasks."""
-        board = self.get_board(pk, request.user)
-        if not board:
-            return Response(
-                {"detail": "Board not found or no access"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = BoardDetailSerializer(board)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        """Return board details or proper error."""
+        try: board = Board.objects.get(pk=pk)
+        except Board.DoesNotExist:
+            return Response({"detail": "Board not found."}, status=404)
+        u = request.user
+        if u != board.created_by and u not in board.members.all() and not Task.objects.filter(board=board, assigned_to=u).exists() and not Task.objects.filter(board=board, reviewer=u).exists():
+            return Response({"detail": "Forbidden. Must be member or owner of the Board."}, status=403)
+        return Response(BoardDetailSerializer(board).data, status=200)
 
     def patch(self, request, pk):
-        """Update a board's title or members (only allowed for creator)."""
-        try:
-            board = Board.objects.get(pk=pk, created_by=request.user)
-        except Board.DoesNotExist:
-            return Response({"detail": "Board not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        self._update_board(board, request.data)
-
-        serializer = BoardUpdateSerializer(board)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def _update_board(self, board, data):
-        """Helper to update board title and members."""
-        title = data.get("title") or data.get("name")
-        if title:
-            board.name = title
-
-        member_ids = data.get("members")
-        if member_ids is not None:
-            valid_members = User.objects.filter(id__in=member_ids)
-            board.members.set(valid_members)
-
+        """
+        Update a board's title or members.
+        Only owner or members can modify.
+        Returns 200, 400, 403 or 404.
+        """
+        try: board = Board.objects.get(pk=pk)
+        except Board.DoesNotExist: return Response({"detail": "Board not found."}, status=404)
+        if request.user != board.created_by and request.user not in board.members.all():
+            return Response({"detail": "Forbidden. Must be owner or member."}, status=403)
+        title, members = request.data.get("title") or request.data.get("name"), request.data.get("members")
+        if title: board.name = title
+        if members is not None:
+            if not isinstance(members, list) or not all(isinstance(i, int) for i in members):
+                return Response({"detail": "Invalid members format."}, status=400)
+            valid = User.objects.filter(id__in=members)
+            if valid.count() != len(members):
+                return Response({"detail": "One or more member IDs are invalid."}, status=400)
+            board.members.set(valid)
         board.save()
-
+        return Response(BoardUpdateSerializer(board).data, status=200)
+    
     def delete(self, request, pk):
-        """Delete a board (only allowed for creator)."""
-        try:
-            board = Board.objects.get(pk=pk, created_by=request.user)
+        """
+        Delete a board (only creator allowed).
+        Returns 204, 403 or 404.
+        """
+        try: board = Board.objects.get(pk=pk)
         except Board.DoesNotExist:
-            return Response(
-                {"detail": "Board not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
+            return Response({"detail": "Board not found."}, status=404)
+        if request.user != board.created_by:
+            return Response({"detail": "Forbidden. Only owner can delete."}, status=403)
         board.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(status=204)
